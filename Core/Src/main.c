@@ -80,21 +80,24 @@ typedef struct
   uint32_t lastChangeTick;
 } Button;
 
-/* PB12：正转/停止；PB13：反转/停止；PB14：加速；PB15：减速。 */
-static Button buttonForward = {GPIO_PIN_12, GPIO_PIN_SET, GPIO_PIN_SET, 0};
-static Button buttonReverse = {GPIO_PIN_13, GPIO_PIN_SET, GPIO_PIN_SET, 0};
+/* PB12：正转/反转切换；PB13：停止；PB14：加速；PB15：减速。 */
+static Button buttonDirection = {GPIO_PIN_12, GPIO_PIN_SET, GPIO_PIN_SET, 0};
+static Button buttonStop = {GPIO_PIN_13, GPIO_PIN_SET, GPIO_PIN_SET, 0};
 static Button buttonSpeedUp = {GPIO_PIN_14, GPIO_PIN_SET, GPIO_PIN_SET, 0};
 static Button buttonSpeedDown = {GPIO_PIN_15, GPIO_PIN_SET, GPIO_PIN_SET, 0};
 
-static MotorDirection motorDirection = MOTOR_STOP;
-static uint8_t motorDutyPercent = 30; /* 上电默认占空比 30%。 */
+static MotorDirection motorDirection = MOTOR_FORWARD; /* 上电默认正转。 */
+static uint8_t motorDutyPercent = 30; /* 上电默认占空比 30%（占空比下限）。 */
 
-#define MOTOR_DUTY_MIN       5U
-#define MOTOR_DUTY_MAX       95U
-#define MOTOR_DUTY_STEP      5U
+#define MOTOR_DUTY_MIN       30U
+#define MOTOR_DUTY_MAX       80U
+#define MOTOR_DUTY_STEP      20U
 #define BUTTON_DEBOUNCE_MS   20U
 
-/* 返回当前占空比对应的定时器比较值。 */
+/* 返回当前占空比对应的定时器比较值。
+ * PWM1 模式向上计数，CNT < CCR 时输出高电平，占空比 = CCR / (ARR + 1)。
+ * 当前 ARR = 799（周期 800 个计数），CCR = 800 * dutyPercent / 100：
+ *   30% -> 240，50% -> 400，70% -> 560，80% -> 640，均小于 800，波形正确。 */
 static uint32_t Motor_GetCompareValue(uint8_t dutyPercent)
 {
   uint32_t period = __HAL_TIM_GET_AUTORELOAD(&htim2);
@@ -131,7 +134,7 @@ static void Motor_SetDirection(MotorDirection direction)
   motorDirection = direction;
 }
 
-/* 在当前方向更新 PWM，占空比范围限制为 5%～95%。 */
+/* 在当前方向更新 PWM，占空比范围限制为 30%～80%。 */
 static void Motor_UpdateDuty(void)
 {
   uint32_t compare = Motor_GetCompareValue(motorDutyPercent);
@@ -166,7 +169,8 @@ static void Motor_Init(void)
     Error_Handler();
   }
 
-  Motor_SetDirection(MOTOR_STOP);
+  /* 上电默认正转，以当前占空比输出 PWM。 */
+  Motor_SetDirection(MOTOR_FORWARD);
 }
 
 /* 消抖后只在按键由松开变为按下时返回一次。 */
@@ -240,19 +244,18 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* PB12：正转/停止切换。 */
-    if (Button_WasPressed(&buttonForward))
+    /* PB12：正转/反转切换，停止时按下则以正转启动。 */
+    if (Button_WasPressed(&buttonDirection))
     {
       Motor_SetDirection((motorDirection == MOTOR_FORWARD) ?
-                         MOTOR_STOP : MOTOR_FORWARD);
+                         MOTOR_REVERSE : MOTOR_FORWARD);
     }
-    /* PB13：反转/停止切换。 */
-    else if (Button_WasPressed(&buttonReverse))
+    /* PB13：停止。 */
+    else if (Button_WasPressed(&buttonStop))
     {
-      Motor_SetDirection((motorDirection == MOTOR_REVERSE) ?
-                         MOTOR_STOP : MOTOR_REVERSE);
+      Motor_SetDirection(MOTOR_STOP);
     }
-    /* PB14：每次加 5%，最高 95%。 */
+    /* PB14：每次加 20%，最高 80%。 */
     else if (Button_WasPressed(&buttonSpeedUp))
     {
       if (motorDutyPercent < MOTOR_DUTY_MAX)
@@ -265,7 +268,7 @@ int main(void)
         Motor_UpdateDuty();
       }
     }
-    /* PB15：每次减 5%，最低 5%。按方向键可停止电机。 */
+    /* PB15：每次减 20%，最低 30%。 */
     else if (Button_WasPressed(&buttonSpeedDown))
     {
       if (motorDutyPercent > MOTOR_DUTY_MIN)
