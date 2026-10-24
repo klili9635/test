@@ -87,9 +87,9 @@ static Button buttonSpeedUp = {GPIO_PIN_14, GPIO_PIN_SET, GPIO_PIN_SET, 0};
 static Button buttonSpeedDown = {GPIO_PIN_15, GPIO_PIN_SET, GPIO_PIN_SET, 0};
 
 static MotorDirection motorDirection = MOTOR_FORWARD; /* 上电默认正转。 */
-static uint8_t motorDutyPercent = 30; /* 上电默认占空比 30%（占空比下限）。 */
+static uint8_t motorDutyPercent = 20; /* 上电默认占空比 30%（占空比下限）。 */
 
-#define MOTOR_DUTY_MIN       30U
+#define MOTOR_DUTY_MIN       20U
 #define MOTOR_DUTY_MAX       80U
 #define MOTOR_DUTY_STEP      20U
 #define BUTTON_DEBOUNCE_MS   20U
@@ -134,7 +134,7 @@ static void Motor_SetDirection(MotorDirection direction)
   motorDirection = direction;
 }
 
-/* 在当前方向更新 PWM，占空比范围限制为 30%～80%。 */
+/* 在当前方向更新 PWM，占空比范围限制为 20%～80%。 */
 static void Motor_UpdateDuty(void)
 {
   uint32_t compare = Motor_GetCompareValue(motorDutyPercent);
@@ -169,7 +169,7 @@ static void Motor_Init(void)
     Error_Handler();
   }
 
-  /* 上电默认正转，以当前占空比输出 PWM。 */
+  /* 上电默认正转，以当前占空比输出 PWM */
   Motor_SetDirection(MOTOR_FORWARD);
 }
 
@@ -255,7 +255,7 @@ int main(void)
     {
       Motor_SetDirection(MOTOR_STOP);
     }
-    /* PB14：每次加 20%，最高 80%。 */
+    /* PB14：每次加 20%，最高 80% */
     else if (Button_WasPressed(&buttonSpeedUp))
     {
       if (motorDutyPercent < MOTOR_DUTY_MAX)
@@ -268,7 +268,7 @@ int main(void)
         Motor_UpdateDuty();
       }
     }
-    /* PB15：每次减 20%，最低 30%。 */
+    /* PB15：每次减 20%，最低 20%。 */
     else if (Button_WasPressed(&buttonSpeedDown))
     {
       if (motorDutyPercent > MOTOR_DUTY_MIN)
